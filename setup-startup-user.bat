@@ -20,7 +20,7 @@ if exist "%SHORTCUT_PATH%" (
     echo 捷徑已建立在: %STARTUP_FOLDER%
     echo.
     echo 系統將在每次開機後自動啟動（背景執行）
-    echo 每天 17:30 會自動檢查是否需要打卡
+    echo 每天 17:00 會自動讀取當天下班時間並打卡
     echo.
     echo 如要停用，刪除該捷徑或執行 remove-startup-user.bat
 ) else (

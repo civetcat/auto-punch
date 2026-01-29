@@ -13,7 +13,7 @@ if %errorlevel% equ 0 (
     echo ✓ 設定成功！
     echo.
     echo 系統將在每次開機後自動啟動，並在背景執行
-    echo 每天 17:30 會自動檢查是否需要打卡
+    echo 每天 17:00 會自動讀取當天下班時間並打卡
     echo.
     echo 如要停用，執行: schtasks /delete /tn "自動打卡系統" /f
 ) else (

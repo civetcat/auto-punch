@@ -8,7 +8,7 @@ dotenv.config();
 
 const PUNCH_URL = process.env.PUNCH_URL || 'http://tw-compbase.supermicro.com:6699/';
 const HEADLESS = process.env.HEADLESS === 'true';
-const MAX_RETRY = parseInt(process.env.MAX_RETRY || '5');
+const MAX_RETRY = parseInt(process.env.MAX_RETRY || '10');
 
 // OCR 識別驗證碼
 async function recognizeCaptcha(imagePath) {
@@ -18,9 +18,9 @@ async function recognizeCaptcha(imagePath) {
       tessedit_char_whitelist: '0123456789', // 只識別數字
     });
     
-    // 清理識別結果（移除空白、換行）
-    const cleaned = text.replace(/\s+/g, '').trim();
-    console.log(`✓ 驗證碼識別結果: ${cleaned}`);
+    // 清理識別結果：移除空白、只保留數字（OCR 有時會誤辨成 § 等符號）
+    const cleaned = text.replace(/\s+/g, '').replace(/\D/g, '').trim();
+    console.log(`✓ 驗證碼識別結果: ${cleaned || '(無)'}`);
     return cleaned;
   } catch (error) {
     console.error('✗ OCR 識別失敗:', error.message);
@@ -71,6 +71,13 @@ async function autoPunch(testMode = false, dryRun = false) {
       return false;
     }
     console.log(`✓ 已登入: ${userName}`);
+
+    // 檢查是否已完成今日打卡
+    const pageContent = await page.content();
+    if (pageContent.includes('本日已完成刷進退')) {
+      console.log('✓ 本日已完成刷進退，無需再打卡');
+      return true;
+    }
     
     // 取得下班時間
     const workTimeText = await page.locator('#expOut').textContent();
@@ -92,65 +99,75 @@ async function autoPunch(testMode = false, dryRun = false) {
       }
     }
     
+    // 不依賴 page 的延遲，避免頁面被關閉時 crash
+    const delay = (ms) => new Promise(r => setTimeout(r, ms));
+
     // 最多嘗試 MAX_RETRY 次
     for (let attempt = 1; attempt <= MAX_RETRY; attempt++) {
-      console.log(`\n--- 第 ${attempt} 次嘗試 ---`);
-      
-      // 截圖驗證碼
-      const captchaImg = page.locator('#ImgCaptcha');
-      await captchaImg.screenshot({ path: 'captcha.png' });
-      console.log('✓ 驗證碼截圖完成');
-      
-      // OCR 識別
-      const captchaCode = await recognizeCaptcha('captcha.png');
-      if (!captchaCode || captchaCode.length < 3) {
-        console.log(`✗ 驗證碼識別失敗或太短 (${captchaCode})，重新整理...`);
-        await page.reload({ waitUntil: 'networkidle' });
-        await page.waitForTimeout(2000);
-        continue;
-      }
-      
-      // 輸入驗證碼
-      const captchaInput = page.locator('#captchacode');
-      await captchaInput.clear();
-      await captchaInput.fill(captchaCode);
-      console.log(`✓ 已輸入驗證碼: ${captchaCode}`);
-      
-      if (dryRun) {
-        console.log('\n🔍 [Dry-Run] 已完成驗證碼識別與填入，但不送出打卡');
-        console.log('如要實際打卡，請移除 --dry-run 參數');
-        await page.screenshot({ path: 'dry-run-preview.png', fullPage: true });
-        console.log('✓ 已截圖儲存為 dry-run-preview.png');
-        return true;
-      }
-      
-      // 送出 (按 Enter)
-      await captchaInput.press('Enter');
-      await page.waitForTimeout(3000);
-      
-      // 檢查是否成功
-      const msgElement = page.locator('#Msg');
-      const msg = await msgElement.textContent().catch(() => '');
-      
-      // 檢查刷卡記錄表格
-      const logTable = await page.locator('#log tr').count();
-      const lastRow = await page.locator('#log tr').last().locator('td').allTextContents().catch(() => []);
-      
-      console.log(`刷卡訊息: ${msg}`);
-      console.log(`最後刷卡記錄: ${lastRow.join(' | ')}`);
-      
-      // 判斷是否成功（刷退欄位有時間）
-      if (lastRow.length >= 2 && lastRow[1].trim() !== '') {
-        console.log('\n✓✓✓ 打卡成功！✓✓✓');
-        await page.screenshot({ path: 'punch-success.png', fullPage: true });
-        return true;
-      } else if (msg.includes('驗證碼錯誤') || msg.includes('確認碼')) {
-        console.log('✗ 驗證碼錯誤，重試...');
-        await page.reload({ waitUntil: 'networkidle' });
-        await page.waitForTimeout(2000);
-      } else {
-        console.log('? 狀態不明，等待 3 秒...');
-        await page.waitForTimeout(3000);
+      try {
+        console.log(`\n--- 第 ${attempt} 次嘗試 ---`);
+
+        // 截圖驗證碼
+        const captchaImg = page.locator('#ImgCaptcha');
+        await captchaImg.screenshot({ path: 'captcha.png' });
+        console.log('✓ 驗證碼截圖完成');
+
+        // OCR 識別
+        const captchaCode = await recognizeCaptcha('captcha.png');
+        if (!captchaCode || captchaCode.length < 3) {
+          console.log(`✗ 驗證碼識別失敗或太短 (${captchaCode})，重新整理...`);
+          await page.reload({ waitUntil: 'networkidle' });
+          await delay(2000);
+          continue;
+        }
+
+        // 輸入驗證碼
+        const captchaInput = page.locator('#captchacode');
+        await captchaInput.clear();
+        await captchaInput.fill(captchaCode);
+        console.log(`✓ 已輸入驗證碼: ${captchaCode}`);
+
+        if (dryRun) {
+          console.log('\n🔍 [Dry-Run] 已完成驗證碼識別與填入，但不送出打卡');
+          console.log('如要實際打卡，請移除 --dry-run 參數');
+          await page.screenshot({ path: 'dry-run-preview.png', fullPage: true });
+          console.log('✓ 已截圖儲存為 dry-run-preview.png');
+          return true;
+        }
+
+        // 送出 (按 Enter)
+        await captchaInput.press('Enter');
+        await delay(3000);
+
+        // 檢查是否成功（若頁面已關閉會拋錯，由 catch 處理）
+        const msgElement = page.locator('#Msg');
+        const msg = await msgElement.textContent().catch(() => '');
+
+        // 檢查刷卡記錄表格
+        const lastRow = await page.locator('#log tr').last().locator('td').allTextContents().catch(() => []);
+
+        console.log(`刷卡訊息: ${msg}`);
+        console.log(`最後刷卡記錄: ${lastRow.join(' | ')}`);
+
+        // 判斷是否成功（刷退欄位有時間）
+        if (lastRow.length >= 2 && lastRow[1].trim() !== '') {
+          console.log('\n✓✓✓ 打卡成功！✓✓✓');
+          await page.screenshot({ path: 'punch-success.png', fullPage: true });
+          return true;
+        } else {
+          // 失敗（驗證碼錯誤或狀態不明）就重新載入頁面、取得新驗證碼再辨識
+          const reason = msg.includes('驗證碼錯誤') || msg.includes('確認碼') ? '驗證碼錯誤' : '狀態不明';
+          console.log(`✗ ${reason}，重新載入並辨識...`);
+          await page.reload({ waitUntil: 'networkidle' });
+          await delay(2000);
+        }
+      } catch (err) {
+        const closed = /closed|detached/i.test(err.message);
+        if (closed) {
+          console.error('✗ 頁面或瀏覽器已關閉，結束流程');
+          break;
+        }
+        throw err;
       }
     }
     

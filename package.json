@@ -6,7 +6,8 @@
   "scripts": {
     "install-deps": "npm install && npx playwright install chromium",
     "punch": "node punch.js",
-    "test": "node punch.js --test"
+    "test": "node punch.js --test",
+    "dry-run": "node punch.js --test --dry-run"
   },
   "dependencies": {
     "playwright": "^1.41.0",

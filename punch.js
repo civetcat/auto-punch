@@ -50,7 +50,7 @@ function parseOffTime(timeString) {
 }
 
 // 主要打卡流程
-async function autoPunch(testMode = false) {
+async function autoPunch(testMode = false, dryRun = false) {
   const browser = await chromium.launch({ 
     headless: HEADLESS, // 從環境變數讀取
     slowMo: 500 // 減慢操作速度，更像人類
@@ -116,6 +116,14 @@ async function autoPunch(testMode = false) {
       await captchaInput.fill(captchaCode);
       console.log(`✓ 已輸入驗證碼: ${captchaCode}`);
       
+      if (dryRun) {
+        console.log('\n🔍 [Dry-Run] 已完成驗證碼識別與填入，但不送出打卡');
+        console.log('如要實際打卡，請移除 --dry-run 參數');
+        await page.screenshot({ path: 'dry-run-preview.png', fullPage: true });
+        console.log('✓ 已截圖儲存為 dry-run-preview.png');
+        return true;
+      }
+      
       // 送出 (按 Enter)
       await captchaInput.press('Enter');
       await page.waitForTimeout(3000);
@@ -160,7 +168,16 @@ async function autoPunch(testMode = false) {
 
 // 執行
 const testMode = process.argv.includes('--test');
-console.log(testMode ? '=== 測試模式（立即執行）===' : '=== 正式模式（等待下班時間）===');
-autoPunch(testMode).then(success => {
+const dryRun = process.argv.includes('--dry-run');
+
+if (dryRun) {
+  console.log('=== Dry-Run 模式（測試流程但不送出打卡）===');
+} else if (testMode) {
+  console.log('=== 測試模式（立即執行）===');
+} else {
+  console.log('=== 正式模式（等待下班時間）===');
+}
+
+autoPunch(testMode, dryRun).then(success => {
   process.exit(success ? 0 : 1);
 });

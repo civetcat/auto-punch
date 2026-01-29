@@ -6,7 +6,11 @@ package-lock.json
 captcha.png
 punch-success.png
 punch-failed.png
+dry-run-preview.png
 *.png
+
+# Tesseract 訓練資料
+*.traineddata
 
 # 環境變數（包含敏感資訊）
 .env

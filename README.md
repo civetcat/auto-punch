@@ -28,11 +28,19 @@ npm run install-deps
 
 ## 使用方式
 
+### 方式 0：Dry-Run 模式（測試用，不會真的打卡）⭐
+```powershell
+npm run dry-run
+```
+或直接執行 `dry-run.bat`
+
+會執行完整流程（包括 OCR 識別驗證碼），但**不會送出打卡**。適合用來測試是否運作正常。
+
 ### 方式 1：測試模式（立即執行）
 ```powershell
 npm run test
 ```
-會立即嘗試打卡，不會等到下班時間
+會立即嘗試打卡，不會等到下班時間（⚠️ 會實際送出打卡）
 
 ### 方式 2：單次執行（等待下班時間）
 ```powershell
@@ -47,16 +55,32 @@ node scheduler.js
 每天 17:30 自動執行，讓此視窗保持開啟即可
 （或用 Windows 工作排程器在開機時執行）
 
-## Windows 工作排程器設定（開機自動執行）
+## 開機自動啟動設定（背景執行）⭐
 
+### 方法 1：一般使用者（推薦，不需管理員權限）
+直接雙擊執行 `setup-startup-user.bat`
+
+這會：
+- 在啟動資料夾建立捷徑
+- 開機時自動啟動
+- 背景靜默執行（不顯示任何視窗）
+- 每天 17:30 自動檢查並打卡
+
+**移除自動啟動**：執行 `remove-startup-user.bat`
+
+### 方法 2：系統管理員（需要管理員權限）
+執行 `setup-startup.bat`（以系統管理員身分執行）
+
+**移除自動啟動**：執行 `remove-startup.bat`
+
+### 手動設定（進階）
 1. 開啟「工作排程器」
 2. 建立基本工作
 3. 名稱：自動打卡
 4. 觸發程序：電腦啟動時
 5. 動作：啟動程式
-   - 程式：`C:\Program Files\nodejs\node.exe`
-   - 引數：`scheduler.js`
-   - 開始於：`C:\Users\danielcheng\Desktop\auto-punch`
+   - 程式：`wscript.exe`
+   - 引數：`"C:\Users\danielcheng\Desktop\auto-punch\start-hidden.vbs"`
 6. 完成
 
 ## 運作原理
@@ -80,7 +104,7 @@ node scheduler.js
 | 變數名稱 | 說明 | 預設值 |
 |---------|------|--------|
 | `PUNCH_URL` | 打卡系統網址 | - |
-| `HEADLESS` | 是否背景執行（不顯示瀏覽器） | `false` |
+| `HEADLESS` | 是否背景執行（不顯示瀏覽器）<br>背景執行設為 `true`，測試時設為 `false` | `true` |
 | `MAX_RETRY` | OCR 識別失敗最大重試次數 | `5` |
 
 ## 注意事項

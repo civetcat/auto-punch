@@ -1,0 +1,17 @@
+{
+  "name": "auto-punch",
+  "version": "1.0.0",
+  "description": "自動打卡系統",
+  "type": "module",
+  "scripts": {
+    "install-deps": "npm install && npx playwright install chromium",
+    "punch": "node punch.js",
+    "test": "node punch.js --test"
+  },
+  "dependencies": {
+    "playwright": "^1.41.0",
+    "tesseract.js": "^5.0.4",
+    "node-cron": "^3.0.3",
+    "dotenv": "^16.4.1"
+  }
+}

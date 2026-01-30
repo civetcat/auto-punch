@@ -1,18 +1,19 @@
 {
   "name": "auto-punch",
-  "version": "1.0.0",
-  "description": "自動打卡系統",
+  "version": "1.1.0",
+  "description": "Auto punch with Playwright + Tesseract OCR, tray & Chrome extension",
   "type": "module",
   "scripts": {
     "install-deps": "npm install && npx playwright install chromium",
     "punch": "node punch.js",
     "test": "node punch.js --test",
-    "dry-run": "node punch.js --test --dry-run"
+    "dry-run": "node punch.js --dry-run"
   },
   "dependencies": {
-    "playwright": "^1.41.0",
-    "tesseract.js": "^5.0.4",
+    "dotenv": "^16.4.1",
     "node-cron": "^3.0.3",
-    "dotenv": "^16.4.1"
+    "playwright": "^1.41.0",
+    "systray2": "^2.1.4",
+    "tesseract.js": "^5.0.4"
   }
 }

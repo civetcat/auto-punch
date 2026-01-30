@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      width: 280px;
+      padding: 16px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+    h1 {
+      font-size: 16px;
+      margin-bottom: 12px;
+      text-align: center;
+    }
+    .status {
+      background: rgba(255,255,255,0.2);
+      border-radius: 8px;
+      padding: 12px;
+      text-align: center;
+      margin-bottom: 12px;
+    }
+    .status-icon {
+      font-size: 32px;
+      margin-bottom: 4px;
+    }
+    .status-text {
+      font-size: 14px;
+      opacity: 0.9;
+    }
+    .buttons {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    button {
+      padding: 10px 16px;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      cursor: pointer;
+      transition: transform 0.1s, opacity 0.2s;
+    }
+    button:hover {
+      transform: scale(1.02);
+    }
+    button:active {
+      transform: scale(0.98);
+    }
+    .btn-toggle {
+      background: white;
+      color: #667eea;
+      font-weight: bold;
+    }
+    .btn-punch {
+      background: rgba(255,255,255,0.2);
+      color: white;
+    }
+    .btn-punch:hover {
+      background: rgba(255,255,255,0.3);
+    }
+    .error {
+      background: #ff6b6b;
+      padding: 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      margin-top: 8px;
+      display: none;
+    }
+    .loading {
+      opacity: 0.6;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <h1>🕐 自動打卡控制</h1>
+  
+  <div class="status">
+    <div class="status-icon" id="statusIcon">⏳</div>
+    <div class="status-text" id="statusText">載入中...</div>
+    <div id="testResult" style="display: none; margin-top: 8px; padding: 8px; background: rgba(255,255,255,0.15); border-radius: 4px; font-size: 12px;">
+      <div style="margin-bottom: 4px;"><strong>測試結果：</strong></div>
+      <div id="testMessage"></div>
+      <div style="margin-top: 4px;"><strong>驗證碼：</strong><span id="captchaCode" style="font-family: monospace; font-size: 14px; font-weight: bold;"></span></div>
+    </div>
+  </div>
+  
+  <div class="buttons">
+    <button class="btn-toggle" id="toggleBtn">切換開關</button>
+    <button class="btn-punch" id="punchBtn">測試流程（不打卡）</button>
+  </div>
+  
+  <div class="error" id="errorMsg"></div>
+  
+  <div style="margin-top: 8px; padding: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; font-size: 11px;">
+    <div>Extension ID:</div>
+    <div id="extId" style="word-break: break-all; margin-top: 4px; font-family: monospace;"></div>
+  </div>
+  
+  <script src="popup.js"></script>
+</body>
+</html>

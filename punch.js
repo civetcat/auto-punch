@@ -3,22 +3,22 @@ import Tesseract from 'tesseract.js';
 import fs from 'fs';
 import dotenv from 'dotenv';
 
-// 載入環境變數
+// Load env
 dotenv.config();
 
 const PUNCH_URL = process.env.PUNCH_URL || 'http://tw-compbase.supermicro.com:6699/';
 const HEADLESS = process.env.HEADLESS === 'true';
 const MAX_RETRY = parseInt(process.env.MAX_RETRY || '10');
 
-// OCR 識別驗證碼
+// OCR recognize captcha
 async function recognizeCaptcha(imagePath) {
   try {
     const { data: { text } } = await Tesseract.recognize(imagePath, 'eng', {
       logger: m => console.log(`OCR: ${m.status} ${m.progress ? (m.progress * 100).toFixed(0) + '%' : ''}`),
-      tessedit_char_whitelist: '0123456789', // 只識別數字
+      tessedit_char_whitelist: '0123456789', // digits only
     });
     
-    // 清理識別結果：移除空白、只保留數字（OCR 有時會誤辨成 § 等符號）
+    // Clean result: strip whitespace, keep digits only (OCR may misread as § etc.)
     const cleaned = text.replace(/\s+/g, '').replace(/\D/g, '').trim();
     console.log(`✓ 驗證碼識別結果: ${cleaned || '(無)'}`);
     return cleaned;
@@ -28,9 +28,9 @@ async function recognizeCaptcha(imagePath) {
   }
 }
 
-// 從頁面解析下班時間
+// Parse off-duty time from page text
 function parseOffTime(timeString) {
-  // 例如: "8:41:59 AM - 5:41:00 PM"
+  // e.g. "8:41:59 AM - 5:41:00 PM"
   const match = timeString.match(/-\s*(\d{1,2}):(\d{2}):(\d{2})\s*(AM|PM)/i);
   if (!match) return null;
   
@@ -39,7 +39,7 @@ function parseOffTime(timeString) {
   minute = parseInt(minute);
   second = parseInt(second);
   
-  // 轉換 12 小時制到 24 小時制
+  // 12h -> 24h
   if (period.toUpperCase() === 'PM' && hour !== 12) {
     hour += 12;
   } else if (period.toUpperCase() === 'AM' && hour === 12) {
@@ -49,11 +49,19 @@ function parseOffTime(timeString) {
   return { hour, minute, second };
 }
 
-// 主要打卡流程
+// Main punch flow
 async function autoPunch(testMode = false, dryRun = false) {
+  // Skip if switch file exists (skip-punch.txt); ignore switch in dry-run so test can run
+  const skipFile = new URL('skip-punch.txt', import.meta.url).pathname.replace(/^\/([A-Z]:)/, '$1');
+  if (fs.existsSync(skipFile) && !dryRun) {
+    console.log('⏸ 自動打卡已關閉（skip-punch.txt 存在），跳過本次執行');
+    console.log('  執行 toggle-auto-punch.bat 可開啟');
+    return true;
+  }
+
   const browser = await chromium.launch({ 
-    headless: HEADLESS, // 從環境變數讀取
-    slowMo: 500 // 減慢操作速度，更像人類
+    headless: HEADLESS, // from env
+    slowMo: 500 // slower, more human-like
   });
   
   try {
@@ -61,10 +69,10 @@ async function autoPunch(testMode = false, dryRun = false) {
     const page = await context.newPage();
     
     console.log('→ 開啟打卡頁面...');
-    await page.goto(PUNCH_URL, { waitUntil: 'networkidle' });
+    await page.goto(PUNCH_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.waitForTimeout(2000);
     
-    // 檢查是否已登入
+    // Check login
     const userName = await page.locator('#UserName').textContent().catch(() => null);
     if (!userName) {
       console.error('✗ 未登入或頁面載入失敗');
@@ -72,19 +80,32 @@ async function autoPunch(testMode = false, dryRun = false) {
     }
     console.log(`✓ 已登入: ${userName}`);
 
-    // 檢查是否已完成今日打卡
+    // Already punched today?
     const pageContent = await page.content();
     if (pageContent.includes('本日已完成刷進退')) {
       console.log('✓ 本日已完成刷進退，無需再打卡');
       return true;
     }
+
+    // Leave guard: need punch-in record; skip in dry-run so test reaches captcha
+    const punchInRecord = await page.locator('#log tr').first().locator('td').first().textContent().catch(() => '');
+    if (!dryRun && (!punchInRecord || punchInRecord.trim() === '')) {
+      console.log('⚠ 今日無上班打卡記錄（可能請假），跳過自動打卡');
+      return true; // success to avoid retry
+    }
+    if (punchInRecord && punchInRecord.trim()) {
+      console.log(`✓ 上班打卡記錄: ${punchInRecord.trim()}`);
+    }
     
-    // 取得下班時間
-    const workTimeText = await page.locator('#expOut').textContent();
+    // Get off-duty time
+    let workTimeText = await page.locator('#expOut').textContent({ timeout: 5000 }).catch(() => '');
+    if (!workTimeText) {
+      workTimeText = await page.locator('[id*="xpOut"], [id*="off"]').first().textContent().catch(() => '') || '';
+    }
     console.log(`✓ 下班時間: ${workTimeText}`);
     
-    if (!testMode) {
-      // 解析並等待到下班時間
+    // Wait until off-time only for real punch; test/dry-run go straight to captcha
+    if (!testMode && !dryRun) {
       const offTime = parseOffTime(`- ${workTimeText}`);
       if (offTime) {
         const now = new Date();
@@ -94,35 +115,42 @@ async function autoPunch(testMode = false, dryRun = false) {
         const waitMs = targetTime - now;
         if (waitMs > 0) {
           console.log(`⏰ 等待到 ${targetTime.toLocaleTimeString('zh-TW')} 才打卡...`);
-          await page.waitForTimeout(Math.min(waitMs, 3600000)); // 最多等 1 小時
+          await page.waitForTimeout(Math.min(waitMs, 3600000)); // max 1h
         }
       }
+    } else if (dryRun) {
+      console.log('⏩ Dry-Run：跳過等待，直接測試驗證碼辨識');
     }
     
-    // 不依賴 page 的延遲，避免頁面被關閉時 crash
+    // Delay without page (avoids crash when page closed)
     const delay = (ms) => new Promise(r => setTimeout(r, ms));
 
-    // 最多嘗試 MAX_RETRY 次
+    // Retry up to MAX_RETRY
     for (let attempt = 1; attempt <= MAX_RETRY; attempt++) {
       try {
         console.log(`\n--- 第 ${attempt} 次嘗試 ---`);
 
-        // 截圖驗證碼
-        const captchaImg = page.locator('#ImgCaptcha');
-        await captchaImg.screenshot({ path: 'captcha.png' });
+        // Screenshot captcha (supports #ImgCaptcha, ctl00_xxx_ImgCaptcha, or img with Captcha/確認)
+        let captchaImg = page.locator('img[id*="ImgCaptcha"], img[id*="Captcha"], img[id*="aptcha"], img[alt*="確認"]').first();
+        await captchaImg.waitFor({ state: 'visible', timeout: 10000 });
+        await captchaImg.screenshot({ path: 'captcha.png', timeout: 5000 });
         console.log('✓ 驗證碼截圖完成');
 
-        // OCR 識別
+        // OCR
         const captchaCode = await recognizeCaptcha('captcha.png');
         if (!captchaCode || captchaCode.length < 3) {
           console.log(`✗ 驗證碼識別失敗或太短 (${captchaCode})，重新整理...`);
-          await page.reload({ waitUntil: 'networkidle' });
+          if (dryRun && attempt === MAX_RETRY) {
+            console.log(`\n[RESULT]${JSON.stringify({ success: false, captcha: captchaCode || '(無)', message: '驗證碼辨識失敗或太短' })}[/RESULT]`);
+          }
+          await page.reload({ waitUntil: 'domcontentloaded', timeout: 15000 });
           await delay(2000);
           continue;
         }
 
-        // 輸入驗證碼
-        const captchaInput = page.locator('#captchacode');
+        // Fill captcha input (supports #captchacode, ctl00_xxx_captchacode, or input with code/確認)
+        const captchaInput = page.locator('input[id*="captchacode"], input[id*="aptcha"], input[name*="captcha"], input[placeholder*="確認"]').first();
+        await captchaInput.waitFor({ state: 'visible', timeout: 5000 });
         await captchaInput.clear();
         await captchaInput.fill(captchaCode);
         console.log(`✓ 已輸入驗證碼: ${captchaCode}`);
@@ -132,33 +160,38 @@ async function autoPunch(testMode = false, dryRun = false) {
           console.log('如要實際打卡，請移除 --dry-run 參數');
           await page.screenshot({ path: 'dry-run-preview.png', fullPage: true });
           console.log('✓ 已截圖儲存為 dry-run-preview.png');
+          // JSON result for Extension (must be last output)
+          const result = { success: true, captcha: captchaCode, message: '測試完成，驗證碼辨識成功' };
+          console.log(`\n[RESULT]${JSON.stringify(result)}[/RESULT]`);
+          // stderr for debug
+          console.error(`[DEBUG] Captcha: ${captchaCode}`);
           return true;
         }
 
-        // 送出 (按 Enter)
+        // Submit (Enter)
         await captchaInput.press('Enter');
         await delay(3000);
 
-        // 檢查是否成功（若頁面已關閉會拋錯，由 catch 處理）
+        // Check success (page closed will throw, handled by catch)
         const msgElement = page.locator('#Msg');
         const msg = await msgElement.textContent().catch(() => '');
 
-        // 檢查刷卡記錄表格
+        // Check punch log table
         const lastRow = await page.locator('#log tr').last().locator('td').allTextContents().catch(() => []);
 
         console.log(`刷卡訊息: ${msg}`);
         console.log(`最後刷卡記錄: ${lastRow.join(' | ')}`);
 
-        // 判斷是否成功（刷退欄位有時間）
+        // Success = punch-out column has time
         if (lastRow.length >= 2 && lastRow[1].trim() !== '') {
           console.log('\n✓✓✓ 打卡成功！✓✓✓');
           await page.screenshot({ path: 'punch-success.png', fullPage: true });
           return true;
         } else {
-          // 失敗（驗證碼錯誤或狀態不明）就重新載入頁面、取得新驗證碼再辨識
+          // On failure: reload, get new captcha, retry
           const reason = msg.includes('驗證碼錯誤') || msg.includes('確認碼') ? '驗證碼錯誤' : '狀態不明';
           console.log(`✗ ${reason}，重新載入並辨識...`);
-          await page.reload({ waitUntil: 'networkidle' });
+          await page.reload({ waitUntil: 'domcontentloaded', timeout: 15000 });
           await delay(2000);
         }
       } catch (err) {
@@ -183,7 +216,7 @@ async function autoPunch(testMode = false, dryRun = false) {
   }
 }
 
-// 執行
+// Run
 const testMode = process.argv.includes('--test');
 const dryRun = process.argv.includes('--dry-run');
 

@@ -1,0 +1,9 @@
+{
+  "name": "com.autopunch.host",
+  "description": "Auto Punch Native Messaging Host",
+  "path": "C:\\Users\\danielcheng\\Desktop\\auto-punch\\native-host\\host.bat",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://bomhoejiodmjageaipgmlpboglgfpmfp/"
+  ]
+}

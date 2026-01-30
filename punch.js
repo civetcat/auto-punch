@@ -28,10 +28,10 @@ async function recognizeCaptcha(imagePath) {
   }
 }
 
-// Parse off-duty time from page text
+// Parse off-duty time from page text (use part after last " - " e.g. "5:41:00 PM")
 function parseOffTime(timeString) {
-  // e.g. "8:41:59 AM - 5:41:00 PM"
-  const match = timeString.match(/-\s*(\d{1,2}):(\d{2}):(\d{2})\s*(AM|PM)/i);
+  const part = timeString.includes(' - ') ? timeString.split(' - ').pop() : timeString;
+  const match = part.match(/(\d{1,2}):(\d{2}):(\d{2})\s*(AM|PM)/i);
   if (!match) return null;
   
   let [, hour, minute, second, period] = match;
@@ -47,6 +47,29 @@ function parseOffTime(timeString) {
   }
   
   return { hour, minute, second };
+}
+
+// Only fetch off-duty time from page then exit (used by scheduler to know when to open browser)
+async function getOffTimeOnly() {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.goto(PUNCH_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.waitForTimeout(2000);
+    const userName = await page.locator('#UserName').textContent().catch(() => null);
+    if (!userName) {
+      console.error('Not logged in');
+      return null;
+    }
+    let workTimeText = await page.locator('#expOut').textContent({ timeout: 5000 }).catch(() => '');
+    if (!workTimeText) {
+      workTimeText = await page.locator('[id*="xpOut"]').first().textContent().catch(() => '') || '';
+    }
+    const offTime = parseOffTime(`- ${workTimeText}`);
+    return offTime;
+  } finally {
+    await browser.close();
+  }
 }
 
 // Main punch flow
@@ -219,15 +242,24 @@ async function autoPunch(testMode = false, dryRun = false) {
 // Run
 const testMode = process.argv.includes('--test');
 const dryRun = process.argv.includes('--dry-run');
+const getOffTime = process.argv.includes('--get-offtime');
 
-if (dryRun) {
+if (getOffTime) {
+  getOffTimeOnly().then(offTime => {
+    if (offTime) {
+      console.log(JSON.stringify(offTime));
+      process.exit(0);
+    } else {
+      process.exit(1);
+    }
+  });
+} else if (dryRun) {
   console.log('=== Dry-Run 模式（測試流程但不送出打卡）===');
+  autoPunch(testMode, dryRun).then(success => process.exit(success ? 0 : 1));
 } else if (testMode) {
   console.log('=== 測試模式（立即執行）===');
+  autoPunch(testMode, dryRun).then(success => process.exit(success ? 0 : 1));
 } else {
   console.log('=== 正式模式（等待下班時間）===');
+  autoPunch(testMode, dryRun).then(success => process.exit(success ? 0 : 1));
 }
-
-autoPunch(testMode, dryRun).then(success => {
-  process.exit(success ? 0 : 1);
-});

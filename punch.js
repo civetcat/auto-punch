@@ -110,13 +110,21 @@ async function autoPunch(testMode = false, dryRun = false) {
       return true;
     }
 
-    // Leave guard: need punch-in record; skip in dry-run so test reaches captcha
-    const punchInRecord = await page.locator('#log tr').first().locator('td').first().textContent().catch(() => '');
-    if (!dryRun && (!punchInRecord || punchInRecord.trim() === '')) {
+    // Leave guard: need punch-in record (time like 8:52:47 AM); skip in dry-run so test reaches captcha
+    // Table: row0 may be header (刷進, 刷退), row1 = data (8:52:47 AM, empty). Use last row for data.
+    const rowCount = await page.locator('#log tr').count();
+    let punchInRecord = '';
+    if (rowCount >= 2) {
+      punchInRecord = await page.locator('#log tr').last().locator('td').first().textContent().catch(() => '') || '';
+    } else if (rowCount === 1) {
+      punchInRecord = await page.locator('#log tr').first().locator('td').first().textContent().catch(() => '') || '';
+    }
+    const looksLikeTime = /^\s*\d{1,2}:\d{2}/.test(punchInRecord); // e.g. "8:52:47 AM"
+    if (!dryRun && !looksLikeTime) {
       console.log('⚠ 今日無上班打卡記錄（可能請假），跳過自動打卡');
       return true; // success to avoid retry
     }
-    if (punchInRecord && punchInRecord.trim()) {
+    if (looksLikeTime) {
       console.log(`✓ 上班打卡記錄: ${punchInRecord.trim()}`);
     }
     

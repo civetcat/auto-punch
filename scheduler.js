@@ -24,11 +24,13 @@ let scheduledTimeout = null; // when we've scheduled a single run for "just befo
 
 async function getOffTimeFromPage() {
   try {
-    const { stdout } = await execAsync('node punch.js --get-offtime', { cwd: process.cwd() });
+    const { stdout } = await execAsync('node punch.js --get-offtime', { cwd: process.cwd(), timeout: 60000 });
     const line = stdout.trim().split('\n').pop();
+    if (!line) return null;
     const off = JSON.parse(line);
     return off; // { hour, minute, second }
   } catch (e) {
+    console.log('Get off-time failed:', e.message);
     return null;
   }
 }
@@ -56,37 +58,45 @@ async function runPunchIfNeeded() {
 
   // Get off-duty time from page (quick headless open, then close)
   const offTime = await getOffTimeFromPage();
+  const now = new Date();
+
   if (!offTime) {
-    console.log('無法取得下班時間，稍後再試');
+    // Fallback: open browser now, punch.js will wait inside until off-time
+    console.log('\nCould not get off-time (e.g. not logged in headless), opening browser now and let punch.js wait until off-time.\n');
+    lastPunchDate = todayKey;
+    runPunchNow();
     return;
   }
 
-  // Taipei today at offTime (17:52) as UTC timestamp
-  const now = new Date();
+  // Taipei today at offTime (e.g. 17:52): 17:52 Taipei = 09:52 UTC
   const taipeiNow = new Date(now.getTime() + 8 * 60 * 60 * 1000);
   const ty = taipeiNow.getUTCFullYear(), tm = taipeiNow.getUTCMonth(), td = taipeiNow.getUTCDate();
-  const targetTaipeiMs = Date.UTC(ty, tm, td, offTime.hour, offTime.minute, offTime.second) - 8 * 60 * 60 * 1000;
+  let utcH = offTime.hour - 8;
+  let utcD = td;
+  if (utcH < 0) {
+    utcH += 24;
+    utcD -= 1;
+  }
+  const targetTaipeiMs = Date.UTC(ty, tm, utcD, utcH, offTime.minute, offTime.second);
   const runAtMs = targetTaipeiMs - MINUTES_BEFORE_OFF * 60 * 1000;
   let waitMs = runAtMs - now.getTime();
   if (waitMs > 24 * 60 * 60 * 1000) waitMs = 0; // sanity: if > 24h, run now
   if (waitMs < 0) waitMs = 0;
 
   if (waitMs === 0) {
-    // already past (runAt), punch now
     lastPunchDate = todayKey;
     runPunchNow();
     return;
   }
 
-  // Schedule single run at (off-time - 2 min)
-  lastPunchDate = todayKey; // claim today so we don't run get-offtime again
+  lastPunchDate = todayKey;
   scheduledTimeout = setTimeout(() => {
     scheduledTimeout = null;
     runPunchNow();
   }, waitMs);
 
   const runAtDate = new Date(runAtMs);
-  console.log(`\n已取得下班時間 ${offTime.hour}:${String(offTime.minute).padStart(2, '0')}，將在 ${runAtDate.toLocaleTimeString('zh-TW')} 左右開瀏覽器打卡一次\n`);
+  console.log(`\nOff-time ${offTime.hour}:${String(offTime.minute).padStart(2, '0')}, will open browser once at ~${runAtDate.toLocaleTimeString('zh-TW')}\n`);
 }
 
 console.log('========================================');

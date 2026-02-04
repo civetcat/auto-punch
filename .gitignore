@@ -4,6 +4,9 @@ package-lock.json
 
 # 執行時產生的檔案
 captcha.png
+scheduler-claim-*.txt
+scheduler.lock
+skip-5pm.txt
 punch-success.png
 punch-failed.png
 dry-run-preview.png

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import fs from 'fs';
-import { exec } from 'child_process';
+import { exec, spawn } from 'child_process';
 import { promisify } from 'util';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -10,6 +10,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const SKIP_FILE = join(__dirname, '..', 'skip-punch.txt');
+const ROOT = join(__dirname, '..');
 
 function isEnabled() {
   return !fs.existsSync(SKIP_FILE);
@@ -23,6 +24,26 @@ function toggle() {
     fs.unlinkSync(SKIP_FILE);
     return true;
   }
+}
+
+// When enabling from Extension: run check in a detached process (host must exit after reply)
+function runCheckAndPunchIfNeeded() {
+  const child = spawn('node', ['check-and-punch-if-needed.js'], {
+    cwd: ROOT,
+    detached: true,
+    stdio: 'ignore',
+  });
+  child.unref();
+}
+
+// Simulate 5 PM flow (get off-time once + run punch) for testing; spawns detached
+function runSimulate5pm() {
+  const child = spawn('node', ['simulate-5pm.js'], {
+    cwd: ROOT,
+    detached: true,
+    stdio: 'ignore',
+  });
+  child.unref();
 }
 
 async function runPunch() {
@@ -182,11 +203,17 @@ async function main() {
       case 'toggle':
         const nowEnabled = toggle();
         writeMessage({ enabled: nowEnabled });
+        if (nowEnabled) runCheckAndPunchIfNeeded(); // 開啟時背景跑一次檢查，若要打下班卡就立刻打
         break;
         
       case 'punch':
         const result = await runPunch();
         writeMessage(result);
+        break;
+
+      case 'simulate-five-pm':
+        runSimulate5pm();
+        writeMessage({ ok: true, message: '已觸發模擬五點流程，請觀察瀏覽器（應只開 2 次：取下班時間 + 打卡）' });
         break;
         
       default:

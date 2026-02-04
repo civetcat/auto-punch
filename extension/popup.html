@@ -66,6 +66,14 @@
     .btn-punch:hover {
       background: rgba(255,255,255,0.3);
     }
+    .btn-simulate {
+      background: rgba(255,200,100,0.4);
+      color: white;
+      font-size: 12px;
+    }
+    .btn-simulate:hover {
+      background: rgba(255,200,100,0.6);
+    }
     .error {
       background: #ff6b6b;
       padding: 8px;
@@ -96,6 +104,7 @@
   <div class="buttons">
     <button class="btn-toggle" id="toggleBtn">切換開關</button>
     <button class="btn-punch" id="punchBtn">測試流程（不打卡）</button>
+    <button class="btn-simulate" id="simulateBtn" title="假裝現在是五點，跑一次實際流程（取下班時間→打卡）。若要暫停真實五點觸發，請在專案目錄建立 skip-5pm.txt">模擬實際情況（五點流程）</button>
   </div>
   
   <div class="error" id="errorMsg"></div>

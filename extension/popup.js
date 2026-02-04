@@ -122,8 +122,26 @@ async function punchNow() {
   }
 }
 
+async function simulateFivePm() {
+  const btn = document.getElementById('simulateBtn');
+  const statusText = document.getElementById('statusText');
+  btn.classList.add('loading');
+  try {
+    const response = await sendMessage('simulate-five-pm');
+    if (response.ok) {
+      statusText.textContent = response.message || '已觸發模擬五點';
+      setTimeout(() => getStatus(), 3000);
+    }
+  } catch (e) {
+    showError('模擬失敗: ' + e.message);
+  } finally {
+    btn.classList.remove('loading');
+  }
+}
+
 document.getElementById('toggleBtn').addEventListener('click', toggle);
 document.getElementById('punchBtn').addEventListener('click', punchNow);
+document.getElementById('simulateBtn').addEventListener('click', simulateFivePm);
 
 // 顯示 Extension ID
 chrome.runtime.sendMessage({action: 'getExtId'}, (response) => {

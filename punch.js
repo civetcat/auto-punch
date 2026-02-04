@@ -143,7 +143,9 @@ async function autoPunch(testMode = false, dryRun = false) {
         const targetTime = new Date();
         targetTime.setHours(offTime.hour, offTime.minute, offTime.second, 0);
         
-        const waitMs = targetTime - now;
+        let waitMs = targetTime - now;
+        // Within 2 min of off-time: punch now, don't drag
+        if (waitMs > 0 && waitMs < 2 * 60 * 1000) waitMs = 0;
         if (waitMs > 0) {
           console.log(`⏰ 等待到 ${targetTime.toLocaleTimeString('zh-TW')} 才打卡...`);
           await page.waitForTimeout(Math.min(waitMs, 3600000)); // max 1h
